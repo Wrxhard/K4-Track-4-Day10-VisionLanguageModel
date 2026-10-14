@@ -9,7 +9,7 @@ Họ tên: Nguyễn Trọng Phúc
 | E1 | LoRA LLM | 33.030.144 | 6,37 | 40,88 | 0,29401 | [0,25524; 0,33333] | 1,14791 | 0,21101 | 0,23138 | 0,52174 |
 | E2 | + projector | 142.135.296 | 8,06 | 41,41 | 0,33097 | [0,29391; 0,37095] | 1,15756 | 0,18400 | 0,25871 | 0,62094 |
 | E3 | + LoRA ViT | 148.426.752 | 8,24 | 50,45 | 0,40854 | [0,36689; 0,44972] | 0,88103 | 0,31481 | 0,31325 | 0,67857 |
-| E4 | (ghi biến và giá trị) | | | | | | | | | |
+| E4 | data_size = 0.1 | 148.426.752 | 7,69 | 49,63 | 0,27477 | [0,23789; 0,31077] | 1,81994 | 0,18634 | 0,17207 | 0,61130 |
 
 ## 10 câu hỏi (trả lời bằng **số của bạn**, không chép lại tài liệu)
 
@@ -180,8 +180,37 @@ Dựa trên phân tích kết quả per-class qua các thí nghiệm E0, E1, E2,
 6. [`report/figures/example_6.png`](report/figures/example_6.png): Minh hoạ trường hợp phức tạp đa đối tượng, mô hình phát hiện đúng `manhole` nhưng có sự nhầm lẫn ranh giới với vết nứt tiếp giáp xung quanh.
 
 ### Câu 10 — E4: bạn đổi biến nào, kết quả thế nào, và kết luận có đáng tin không?
-<điền>
+- **Biến được lựa chọn để thực hiện Ablation trong E4:**
+  Tôi chọn khảo sát biến **`data_size`** (tỉ lệ dữ liệu huấn luyện) trên nền kiến trúc tối ưu nhất là **E3** (LoRA LLM + Projector Float32 + LoRA ViT):
+  So sánh đối chứng có kiểm soát giữa **10% dữ liệu train** (`data_size = 0.1`, tương ứng $142$ ảnh huấn luyện được lấy mẫu ngẫu nhiên theo session) và **100% dữ liệu train** (`data_size = 1.0`, tương ứng toàn bộ $1422$ ảnh huấn luyện).
+
+- **Kết quả thực nghiệm đo đạc (lấy chuẩn xác từ các file bằng chứng):**
+
+| Cấu hình | Dữ liệu train | Tham số train | VRAM đỉnh (GB) | Phút | F1 micro | CI95 | FP / ảnh | F1 pothole | F1 crack | F1 manhole |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **E4 (10% data)** | 142 ảnh (0.1) | 148.426.752 | 7,69 GB | 49,63 phút | **0,27477** | [0,23789; 0,31077] | 1,81994 | 0,18634 | 0,17207 | 0,61130 |
+| **E4 (100% data / E3)** | 1422 ảnh (1.0) | 148.426.752 | 8,24 GB | 50,45 phút | **0,40854** | [0,36689; 0,44972] | **0,88103** | **0,31481** | **0,31325** | **0,67857** |
+| **Chênh lệch (1.0 vs 0.1)** | +1280 ảnh | 0 | +0,55 GB | +0,82 phút | **+0,13377 (+48,7%)** | Tách biệt hoàn toàn | **-0,93891 (-51,6%)** | **+0,12847** | **+0,14118** | **+0,06727** |
+
+*(Dữ liệu đối chứng được ghi nhận từ [`report/evidence/e4_data_size_0.1.json`](report/evidence/e4_data_size_0.1.json) và [`report/evidence/e4_data_size_1.0.json`](report/evidence/e4_data_size_1.0.json)).*
+
+- **Phân tích và độ tin cậy của kết luận:**
+  1. **Hiệu năng suy giảm nghiêm trọng khi thiếu dữ liệu:**
+     Khi giảm 90% lượng ảnh huấn luyện (từ 1422 ảnh xuống 142 ảnh), điểm F1 micro sụt giảm tới **13,38 điểm phần trăm F1** (từ **0,40854** xuống **0,27477**, tương đương suy giảm 32,7% hiệu năng tổng thể). Tỉ lệ dự đoán sai (FP/ảnh) vọt tăng gấp đôi từ 0,88 lên **1,82 FP/ảnh** (tổng số box FP tăng từ 274 lên 566). Điều này chứng minh 142 ảnh là quá ít để mô hình học cách phân biệt sự đa dạng của nền đường, dẫn đến mô hình bị overfitting và đoán bừa các vật thể trên đường.
+  2. **Độ tin cậy của kết luận nhìn từ khoảng tin cậy CI95:**
+     Khoảng CI95 của bản 10% dữ liệu là **[0,23789; 0,31077]**, trong khi khoảng CI95 của bản 100% dữ liệu là **[0,36689; 0,44972]**.
+     Khoảng cách giữa cận trên của bản 10% ($0,31077$) và cận dưới của bản 100% ($0,36689$) là **hơn 5,6 điểm phần trăm F1**, **hoàn toàn không có bất kỳ vùng chồng lấn nào**.
+     Sự tách biệt tuyệt đối giữa hai khoảng CI95 khẳng định rằng: kết luận *"quy mô tập dữ liệu huấn luyện có ảnh hưởng quyết định và mang tính bản chất đến khả năng thích ứng của Vision-Language Model đối với bài toán nhận diện hư hại đường"* là **hoàn toàn đáng tin cậy về mặt thống kê**, không hề bị chi phối bởi độ bất định ngẫu nhiên của tập test 311 ảnh.
 
 ## Nhìn lại
 
-<điền: điều bạn chưa hiểu, lỗi dữ liệu hoặc mô hình bạn gặp mà công cụ chấm chưa bắt được>
+Qua chuỗi thí nghiệm từ zero-shot (E0) đến các biến thể finetune có kiểm soát (E1, E2, E3, E4) trên mô hình Qwen3-VL-4B, tôi rút ra các bài học chuyên môn sâu sắc:
+
+1. **Bài học về độ ổn định số học và kiểu dữ liệu Float32:**
+   Khi huấn luyện mô hình đa phương thức phức tạp có kiến trúc merger đa tầng như DeepStack, việc ép kiểu các tham số projector sang `torch.float32` là yếu tố sống còn. Cơ chế lan truyền ngược qua các lớp sâu tích luỹ gradient qua nhiều phép nhân ma trận, nếu để ở `fp16` sẽ lập tức gây hiện tượng tràn số số học dẫn đến `Loss = nan`. Đây là lỗi kiến trúc ngầm mà nếu không hiểu sâu về cấu tạo forward/backward thì rất khó chẩn đoán.
+2. **Cạm bẫy lưu trữ trọng số khi kết hợp PEFT và tham số mở (Full Training):**
+   Thư viện `peft` với `model.save_pretrained()` chỉ serialize các adapter LoRA, hoàn toàn bỏ qua các tham số gốc được mở `requires_grad=True` như Projector. Bắt buộc phải chủ động trích xuất `state_dict` của projector và lưu riêng ra file `.pt`, đồng thời nạp lại ở bước inference. Nếu bỏ qua bước này, kết quả của E2/E3 sẽ bị kéo tụt về hệt E1 do sử dụng lại projector gốc chưa huấn luyện.
+3. **Sự đồng bộ hệ toạ độ và nguy cơ sụp đổ độ đo IoU:**
+   Mô hình Qwen3-VL được thiết kế để học toạ độ chuẩn hoá thang số nguyên `norm1000` ($[0, 1000]$). Việc chuẩn hoá nhãn đầu vào và công cụ đánh giá `score.py` phải tuân thủ nghiêm ngặt cùng một hệ quy chiếu. Bất kỳ sự sai lệch nào giữa thang toạ độ pixel tuyệt đối và thang 1000 đều khiến diện tích giao nhau ($Intersection$) sụp đổ về 0, làm F1 biến thành 0 dù chuỗi JSON sinh ra hoàn toàn hợp lệ.
+4. **Hạn chế của bounding box và ngưỡng IoU 0.5 đối với vật thể dạng nứt rạn:**
+   Bộ chấm đánh giá dựa trên IoU của bounding box chữ nhật. Tuy nhiên, đối với vết nứt (`crack`), diện tích thực của vết nứt rất mảnh và chỉ chiếm một tỉ lệ vô cùng nhỏ bên trong hình chữ nhật bao quanh. Một dự đoán của mô hình dù bám rất sát vết nứt về mặt thị giác nhưng chỉ cần lệch toạ độ góc hộp đôi chút là IoU đã tụt xuống dưới 0.5 và bị coi là False Positive. Điều này cho thấy với bài toán kiểm định mặt đường trong thực tế, biểu diễn dạng đa giác (polygon) hoặc mặt nạ phân vùng (segmentation mask) sẽ phản ánh chính xác chất lượng thị giác hơn là bounding box hình chữ nhật truyền thống.
