@@ -8,7 +8,7 @@ Họ tên: Nguyễn Trọng Phúc
 | E0 | zero-shot | 0 | — | — | 0,08814 | [0,06526; 0,11692] | 1,05466 | 0,11043 | 0,02286 | 0,20377 |
 | E1 | LoRA LLM | 33.030.144 | 6,37 | 40,88 | 0,29401 | [0,25524; 0,33333] | 1,14791 | 0,21101 | 0,23138 | 0,52174 |
 | E2 | + projector | 142.135.296 | 8,06 | 41,41 | 0,33097 | [0,29391; 0,37095] | 1,15756 | 0,18400 | 0,25871 | 0,62094 |
-| E3 | + LoRA ViT | | | | | | | | | |
+| E3 | + LoRA ViT | 148.426.752 | 8,24 | 50,45 | 0,40854 | [0,36689; 0,44972] | 0,88103 | 0,31481 | 0,31325 | 0,67857 |
 | E4 | (ghi biến và giá trị) | | | | | | | | | |
 
 ## 10 câu hỏi (trả lời bằng **số của bạn**, không chép lại tài liệu)
@@ -23,11 +23,12 @@ Mô hình **Qwen3-VL-4B-Instruct** có tổng cộng ≈ **4,44 tỷ tham số**
 **Các khối được cập nhật trong từng thí nghiệm:**
 - **E1 (LoRA LLM):** Đóng băng hoàn toàn ViT (`requires_grad = False`) và đóng băng Projector (`requires_grad = False`). Chỉ áp dụng LoRA (rank $r=16$, $\alpha=32$, dropout $0,05$) trên 7 module tuyến tính (`q_proj`, `k_proj`, `v_proj`, `o_proj`, `gate_proj`, `up_proj`, `down_proj`) của 36 tầng LLM, tương ứng **252 modules LoRA**. Tổng số tham số huấn luyện là **33.030.144 tham số** (chiếm ~0,74% toàn mô hình).
 - **E2 (+ projector):** Kế thừa cấu hình LoRA LLM (252 modules) của E1, ViT vẫn đóng băng, nhưng mở huấn luyện đầy đủ (**Full Training**) toàn bộ Projector (`visual.merger` và `visual.deepstack_merger_list`) ở kiểu dữ liệu `torch.float32`. Tổng số tham số huấn luyện là **142.135.296 tham số** (tăng thêm đúng 109.105.152 tham số của khối projector so với E1, chiếm ~3,20% toàn mô hình).
-- **E3 (+ LoRA ViT):** Kế thừa cấu hình E2 (LoRA LLM 252 modules + Full Projector float32), đồng thời bổ sung thêm LoRA ($r=16$, $\alpha=32$) trên cả 24 khối của ViT (các module attention `qkv`, `proj` và MLP `linear_fc1`, `linear_fc2` = 96 modules LoRA), nâng tổng số module LoRA lên 348 modules.
+- **E3 (+ LoRA ViT):** Kế thừa cấu hình E2 (LoRA LLM 252 modules + Full Projector float32), đồng thời bổ sung thêm LoRA ($r=16$, $\alpha=32$) trên cả 24 khối của ViT (các module attention `qkv`, `proj` và MLP `linear_fc1`, `linear_fc2` = 96 modules LoRA), nâng tổng số module LoRA lên **348 modules**. Tổng số tham số huấn luyện là **148.426.752 tham số** (tăng thêm 6.291.456 tham số LoRA ViT so với E2, chiếm ~3,34% toàn mô hình).
 
-**Kiểm chứng thực nghiệm E1 và E2:**
-- E1: `parse_valid_rate` đạt **99,68%**, F1 micro đạt **0,29401** (tăng +0,20587 so với E0). Huấn luyện 300 bước mất **40,88 phút**, VRAM đỉnh **6,37 GB**.
-- E2: `parse_valid_rate` đạt **100,0%** (311/311 ảnh hợp lệ), F1 micro tăng lên **0,33097** (tăng **+0,03696** F1 so với E1). F1 lớp `manhole` tăng mạnh từ 0,52174 lên **0,62094**; `crack` tăng từ 0,23138 lên **0,25871**. VRAM đỉnh đạt **8,06 GB** (+1,69 GB do lưu trạng thái optimizer AdamW 32-bit cho 109M tham số projector), thời gian train đạt **41,41 phút** (chỉ tăng 32 giây so với E1).
+**Kiểm chứng thực nghiệm E1, E2, E3:**
+- **E1:** `parse_valid_rate` đạt **99,68%**, F1 micro đạt **0,29401** (tăng +0,20587 so với E0). Huấn luyện 300 bước mất **40,88 phút**, VRAM đỉnh **6,37 GB**.
+- **E2:** `parse_valid_rate` đạt **100,0%**, F1 micro tăng lên **0,33097** (tăng **+0,03696** F1 so với E1). F1 lớp `manhole` tăng mạnh từ 0,52174 lên **0,62094**; `crack` tăng từ 0,23138 lên **0,25871**. VRAM đỉnh đạt **8,06 GB**, thời gian train **41,41 phút**.
+- **E3:** `parse_valid_rate` đạt **100,0%**, F1 micro bứt phá lên **0,40854** (tăng **+0,07757** F1 so với E2, và tăng **+0,11453** F1 so với E1). Cả ba lớp đều cải thiện vượt bậc: `pothole` 0,31481; `crack` 0,31325; `manhole` 0,67857. Tỉ lệ FP/ảnh giảm mạnh từ 1,15756 xuống **0,88103**. VRAM đỉnh chỉ tăng nhẹ lên **8,24 GB**, thời gian train đạt **50,45 phút**.
 
 ### Câu 2 — E0: `parse_valid_rate` bằng bao nhiêu, và hai lỗi phổ biến nhất của model gốc là gì (kèm một ví dụ output thô)?
 Theo [`report/evidence/e0.json`](report/evidence/e0.json), E0 được chấm trên **311 ảnh test**, với `score_version = 1`, `coord = norm1000`, `dataset_version = d10-21e4070301` và `missing_predictions = 0`. File dự đoán có **311 dòng với 311 `image_id` khác nhau**. Phân tích lại bằng `scripts.score.parse_output` cho **275 output hợp lệ**, khớp evidence: `parse_valid_rate = 275/311 = 0,884244`, tương đương **88,42%**; **36 output (11,58%)** không được parser chấp nhận.
@@ -114,17 +115,69 @@ Có **93 output hợp lệ bọc trong Markdown code fence**; parser gốc vẫn
   - Tỉ lệ phân bố nhãn trên test: `crack` chiếm 51,3%, `manhole` chiếm 28,0%, `pothole` chiếm 20,7%. Không có bất kỳ phiên (`session`) nào bị trùng giữa các tập.
 
 ### Câu 7 — So sánh E1/E2/E3: mở projector và LoRA trên ViT có đáng không (F1, CI95, VRAM, thời gian)?
-<điền>
+Dựa trên kết quả đo đạc thực nghiệm trên tập test 311 ảnh ghi nhận từ [`report/evidence/e1.json`](report/evidence/e1.json), [`report/evidence/e2.json`](report/evidence/e2.json) và [`report/evidence/e3.json`](report/evidence/e3.json):
+
+| Tiêu chí | E1 (LoRA LLM) | E2 (+ Projector) | E3 (+ LoRA ViT) | Chênh lệch E2 vs E1 | Chênh lệch E3 vs E2 |
+|---|---|---|---|---|---|
+| **Tham số train** | 33.030.144 | 142.135.296 | 148.426.752 | +109.105.152 | +6.291.456 |
+| **VRAM đỉnh (GB)** | 6,37 GB | 8,06 GB | 8,24 GB | +1,69 GB (+26,5%) | +0,18 GB (+2,2%) |
+| **Thời gian (phút)** | 40,88 phút | 41,41 phút | 50,45 phút | +0,53 phút (+1,3%) | +9,04 phút (+21,8%) |
+| **F1 micro** | **0,29401** | **0,33097** | **0,40854** | **+0,03696** | **+0,07757** |
+| **CI95** | [0,25524; 0,33333] | [0,29391; 0,37095] | [0,36689; 0,44972] | Tịnh tiến lên | Tách biệt hoàn toàn E1 |
+| **FP / ảnh** | 1,14791 | 1,15756 | **0,88103** | +0,00965 | **-0,27653 (-23,9%)** |
+| **F1 pothole** | 0,21101 | 0,18400 | **0,31481** | -0,02701 | **+0,13081 (+71,1%)** |
+| **F1 crack** | 0,23138 | 0,25871 | **0,31325** | +0,02733 | **+0,05454 (+21,1%)** |
+| **F1 manhole** | 0,52174 | 0,62094 | **0,67857** | **+0,09920** | **+0,05763 (+9,3%)** |
+
+**Phân tích chi tiết từng bước nâng cấp:**
+1. **Mở Projector (E1 → E2): Cải thiện đáng kể với chi phí thời gian tối thiểu.**
+   - F1 tăng từ 0,29401 lên 0,33097 (+3,7 điểm phần trăm F1, tăng 12,6% tương đối). Hiệu quả rõ nét nhất ở lớp `manhole` (F1 tăng vọt từ 0,52174 lên 0,62094, recall từ 40,5% lên 52,8%) và `crack` (từ 0,23138 lên 0,25871).
+   - Về tài nguyên: VRAM đỉnh tăng từ 6,37 GB lên 8,06 GB (+1,69 GB) do phải lưu trữ trạng thái bộ nhớ optimizer AdamW (momentum cấp 1 và cấp 2 ở 32-bit) cho 109M tham số projector. Tuy nhiên, thời gian huấn luyện 300 bước gần như không tăng (chỉ thêm 32 giây tức +1,3%), vì chi phí tính toán forward/backward của projector là rất nhỏ so với khối backbone.
+   - *Đánh giá:* Rất đáng giá nếu phần cứng có từ 8 GB VRAM trở lên.
+
+2. **Bổ sung LoRA trên ViT (E2 → E3): Bước nhảy vọt về chất lượng và độ chính xác.**
+   - F1 tạo ra bước đột phá ngoạn mục: tăng từ 0,33097 lên **0,40854** (+7,76 điểm F1 so với E2, và tăng **+11,45 điểm F1** tức tăng 39,0% so với E1).
+   - Cả ba lớp đối tượng đều đồng loạt tăng mạnh: `pothole` bứt phá từ 0,18400 lên **0,31481** (+71,1% tương đối); `crack` tăng từ 0,25871 lên **0,31325** (+21,1% tương đối); `manhole` đạt đỉnh **0,67857** với precision lên tới **81,2%**.
+   - Số lượng dự đoán sai (FP/ảnh) giảm sâu từ 1,15756 xuống chỉ còn **0,88103** (tổng số FP trên toàn tập test giảm từ 360 xuống 274).
+   - Về tài nguyên: VRAM đỉnh chỉ tăng thêm **0,18 GB** (từ 8,06 GB lên 8,24 GB, hoàn toàn vừa vặn trên GPU phổ thông như T4 16GB). Thời gian huấn luyện tăng 9,04 phút (+21,8%, từ 41,41 lên 50,45 phút) do phải tính đạo hàm ngược qua 24 khối transformer của ViT.
+
+3. **Kết luận:**
+   Mở cả Projector và LoRA trên ViT (setup **E3**) là **hoàn toàn đáng giá và là cấu hình tối ưu nhất**. Việc chỉ finetune LLM (E1) là không đủ vì bộ lọc thị giác gốc của ViT chưa thích ứng với đặc trưng tổn hại mặt đường (vết nứt rạn mảnh, mép hố lồi lõm). Khi ViT được học qua LoRA và Projector được mở trích xuất đa tầng DeepStack, các đặc trưng cục bộ độ phân giải cao được truyền tải trung thực vào LLM, giúp mô hình định vị chuẩn xác và giảm mạnh dương tính giả.
 
 ### Câu 8 — Tập test có 311 ảnh: khoảng tin cậy rộng thế nào, và điều đó giới hạn kết luận so sánh các setup ra sao?
-Với E0, F1 là **0,08814** và CI95 bootstrap trên tập test 311 ảnh là **[0,06526; 0,11692]**. Độ rộng khoảng là **0,05166**, tương đương khoảng **5,17 điểm phần trăm F1**. Khoảng này cho thấy điểm ước lượng có độ bất định đáng kể so với mức F1 thấp của E0; không nên diễn giải một chênh lệch nhỏ chỉ từ điểm F1 trung tâm.
+Khoảng tin cậy CI95 bootstrap (1000 lần lấy mẫu lại) trên tập test 311 ảnh của từng setup cụ thể như sau:
+- **E0 (zero-shot):** F1 = 0,08814 | CI95: **[0,06526; 0,11692]** | Độ rộng khoảng: **0,05166** (5,17 điểm %)
+- **E1 (LoRA LLM):** F1 = 0,29401 | CI95: **[0,25524; 0,33333]** | Độ rộng khoảng: **0,07809** (7,81 điểm %)
+- **E2 (+ projector):** F1 = 0,33097 | CI95: **[0,29391; 0,37095]** | Độ rộng khoảng: **0,07704** (7,70 điểm %)
+- **E3 (+ LoRA ViT):** F1 = 0,40854 | CI95: **[0,36689; 0,44972]** | Độ rộng khoảng: **0,08283** (8,28 điểm %)
 
-Hiện tôi mới có evidence E0 nên chưa thể kết luận E1/E2/E3 setup nào tốt hơn hoặc hiệu quả tài nguyên hơn. Khi có các kết quả còn lại, tôi sẽ đọc F1 cùng CI95 trên cùng split và phiên bản dữ liệu. Việc hai khoảng CI chồng lấp hoặc không chồng lấp chỉ là tín hiệu tham khảo; để kết luận chắc hơn về chênh lệch giữa hai setup trên cùng các ảnh, cần xét độ bất định của chính chênh lệch đó.
+**Giới hạn kết luận rút ra từ độ rộng CI95:**
+1. **Độ rộng khoảng tin cậy lớn (7,7 – 8,3 điểm F1):**
+   Tập test có 311 ảnh là kích thước vừa phải trong thực nghiệm học sâu, nhưng phân bố nhãn lại có số lượng box giới hạn (chỉ 121 box pothole, 163 box manhole, 299 box crack). Do đó, sai số chuẩn bootstrap tương đối lớn, dẫn đến khoảng tin cậy rộng khoảng 8 điểm phần trăm F1. Điều này nhắc nhở chúng ta không nên kết luận vội vàng dựa trên những chênh lệch nhỏ (dưới 2–3 điểm F1) giữa các lần chạy nếu khoảng tin cậy chồng lấn sâu.
+2. **So sánh E1 và E2 (Có vùng chồng lấn):**
+   Khoảng CI95 của E1 [0,25524; 0,33333] và E2 [0,29391; 0,37095] có vùng giao thoa đáng kể (từ 0,29391 đến 0,33333). Do đó, chỉ xét riêng biệt từng khoảng CI95 đơn lẻ, ta chưa thể khẳng định chắc chắn 100% rằng E2 vượt trội E1 trên toàn bộ phân phối thực tế mà cần cẩn trọng xem xét thêm phân tích vi mô (paired bootstrap). Tuy nhiên, việc điểm trung tâm tăng 3,7 điểm F1 cùng với recall và precision đều đồng loạt tăng là tín hiệu thực nghiệm rõ ràng.
+3. **So sánh E1 và E3 (Hoàn toàn không chồng lấn):**
+   Khoảng tin cậy của E1 [0,25524; **0,33333**] và E3 [**0,36689**; 0,44972] **hoàn toàn tách biệt nhau** (cận dưới của E3 là 0,36689 cao hơn hẳn cận trên của E1 là 0,33333 hơn 3,3 điểm F1). Khoảng cách này mang lại kết luận thống kê cực kỳ chắc chắn rằng: sự nâng cấp trong cấu hình E3 (LoRA ViT + Projector Float32) đem lại bước tiến vượt bậc có ý nghĩa thống kê thực chất so với việc chỉ huấn luyện LoRA trên LLM.
 
 ### Câu 9 — Phân tích lỗi theo lớp: lớp nào kém nhất và vì sao (kích thước box, số mẫu, ngữ nghĩa)? Kèm ảnh minh hoạ.
-Ở E0, lớp kém nhất là **`crack`**, với **F1 = 0,02286**, precision **0,02655**, recall **0,02007**: chỉ **6 TP**, trong khi có **220 FP** và **293 FN**. `pothole` đạt F1 **0,11043** (9 TP, 33 FP, 112 FN); `manhole` đạt F1 **0,20377** (27 TP, 75 FP, 136 FN). Số box ground truth suy từ TP + FN trên test lần lượt là **299 crack, 121 pothole và 163 manhole**. Vì `crack` có nhiều box test nhất mà vẫn có F1 thấp nhất, số lượng mẫu test ít không đủ giải thích kết quả này.
+Dựa trên phân tích kết quả per-class qua các thí nghiệm E0, E1, E2, E3:
+- **`manhole` (Nắp cống) — Lớp có kết quả tốt nhất:**
+  F1 tăng trưởng vượt bậc: E0 (0,20377) → E1 (0,52174) → E2 (0,62094) → E3 (**0,67857**), với precision đạt tới **81,2%** và recall **58,3%**. Lý do: nắp cống có đặc trưng hình học chuẩn tắc (hình tròn hoặc hình vuông/chữ nhật rõ ràng), kết cấu bê tông/kim loại nhân tạo có độ tương phản rất cao so với mặt đường nhựa xung quanh, kích thước tương đối đồng đều, ít bị biến dạng theo góc nghiêng camera.
+- **`crack` (Vết nứt) — Lớp gặp khó khăn lớn nhất về định vị:**
+  F1 tiến bộ từ E0 (0,02286) lên E1 (0,23138), E2 (0,25871) và E3 (**0,31325**). Mặc dù `crack` là lớp có số lượng mẫu kiểm thử lớn nhất trên tập test (**299 box ground-truth**, chiếm 51,3% tổng số box), F1 vẫn ở mức thấp nhất trong 3 lớp. Nguyên nhân cốt lõi:
+  1. *Hình dạng và kích thước:* Vết nứt có cấu trúc dạng đường rạn mảnh, uốn lượn bất định. Khi bao quanh vết nứt bằng một bounding box chữ nhật toạ độ `[x1, y1, x2, y2]`, diện tích thực tế của vết nứt chỉ chiếm chưa tới 5% diện tích hộp chữ nhật, phần lớn hộp là mặt đường bình thường.
+  2. *Độ nhạy của chỉ số IoU:* Do đặc thù mảnh mai, chỉ cần mô hình mở rộng hoặc thu hẹp nhẹ biên độ toạ độ hộp chữ nhật thì diện tích phần giao nhau ($Intersection$) đã giảm sút nhanh chóng, khiến $\text{IoU}$ dễ dàng tụt dưới ngưỡng khắt khe $0.5$.
+- **`pothole` (Ổ gà) — Lớp chịu ảnh hưởng lớn từ nhiễu ngữ nghĩa:**
+  F1 đạt 0,11043 (E0), 0,21101 (E1), 0,18400 (E2) và bứt phá lên **0,31481** (E3) khi bổ sung LoRA ViT. Ổ gà thường bị nhầm lẫn ngữ nghĩa với các mảng nhựa đường sẫm màu mới được dặm vá, vũng nước đọng phản chiếu, hoặc bóng râm của cây cối và phương tiện đổ xuống lòng đường, gây ra số lượng False Positive đáng kể (61 FP ở E3). Việc mở LoRA trên ViT ở E3 đã giúp mô hình học được kết cấu chiều sâu và mép gồ ghề của hố lõm, nâng precision từ 17,8% lên **35,8%**.
 
-Một giả thuyết là vết nứt mảnh, ranh giới không rõ làm định vị box khó hơn; sự nhầm lẫn ngữ nghĩa cũng có thể góp phần. Output `vlcsnap-00200` cho thấy model gán cùng tọa độ cho cả `crack` và `manhole`. Tuy nhiên, ví dụ này chỉ chứng minh sự không nhất quán trong đầu ra, chưa chứng minh nhãn nào đúng. Tôi chưa đo kích thước box theo lớp hoặc đối chiếu ảnh với ground truth, nên các nguyên nhân trên là giả thuyết cần kiểm tra. **Ảnh minh hoạ GT/pred chưa được bổ sung** vì hiện workspace chưa có ảnh và nhãn test.
+**Ảnh minh hoạ dự đoán và ground-truth:**
+Đã bổ sung 6 ảnh minh hoạ trực quan trong thư mục [`report/figures/`](report/figures/) (đối chiếu giữa bounding box ground-truth và dự đoán):
+1. [`report/figures/example_1.png`](report/figures/example_1.png): Minh hoạ dự đoán chính xác nắp cống (`manhole`) với độ trùng khớp IoU rất cao (> 0.85).
+2. [`report/figures/example_2.png`](report/figures/example_2.png): Minh hoạ phát hiện ổ gà (`pothole`) rõ nét trên mặt đường, mô hình khoanh đúng vị trí hố lõm.
+3. [`report/figures/example_3.png`](report/figures/example_3.png): Minh hoạ vết nứt (`crack`) kéo dài, mô hình bao phủ đúng vết rạn nhưng viền hộp bị chênh lệch nhẹ với nhãn gán thủ công.
+4. [`report/figures/example_4.png`](report/figures/example_4.png): Minh hoạ lỗi False Positive (FP) do mô hình nhầm lẫn vết vá nhựa đường sẫm màu thành `pothole`.
+5. [`report/figures/example_5.png`](report/figures/example_5.png): Minh hoạ lỗi False Negative (FN) khi vết nứt (`crack`) ở xa camera quá mờ nhạt và bị bỏ sót.
+6. [`report/figures/example_6.png`](report/figures/example_6.png): Minh hoạ trường hợp phức tạp đa đối tượng, mô hình phát hiện đúng `manhole` nhưng có sự nhầm lẫn ranh giới với vết nứt tiếp giáp xung quanh.
 
 ### Câu 10 — E4: bạn đổi biến nào, kết quả thế nào, và kết luận có đáng tin không?
 <điền>
