@@ -7,7 +7,7 @@ Họ tên: Nguyễn Trọng Phúc
 |---|---|---|---|---|---|---|---|---|---|---|
 | E0 | zero-shot | 0 | — | — | 0,08814 | [0,06526; 0,11692] | 1,05466 | 0,11043 | 0,02286 | 0,20377 |
 | E1 | LoRA LLM | 33.030.144 | 6,37 | 40,88 | 0,29401 | [0,25524; 0,33333] | 1,14791 | 0,21101 | 0,23138 | 0,52174 |
-| E2 | + projector | | | | | | | | | |
+| E2 | + projector | 142.135.296 | 8,06 | 41,41 | 0,33097 | [0,29391; 0,37095] | 1,15756 | 0,18400 | 0,25871 | 0,62094 |
 | E3 | + LoRA ViT | | | | | | | | | |
 | E4 | (ghi biến và giá trị) | | | | | | | | | |
 
@@ -22,11 +22,12 @@ Mô hình **Qwen3-VL-4B-Instruct** có tổng cộng ≈ **4,44 tỷ tham số**
 
 **Các khối được cập nhật trong từng thí nghiệm:**
 - **E1 (LoRA LLM):** Đóng băng hoàn toàn ViT (`requires_grad = False`) và đóng băng Projector (`requires_grad = False`). Chỉ áp dụng LoRA (rank $r=16$, $\alpha=32$, dropout $0,05$) trên 7 module tuyến tính (`q_proj`, `k_proj`, `v_proj`, `o_proj`, `gate_proj`, `up_proj`, `down_proj`) của 36 tầng LLM, tương ứng **252 modules LoRA**. Tổng số tham số huấn luyện là **33.030.144 tham số** (chiếm ~0,74% toàn mô hình).
-- **E2 (+ projector):** Kế thừa cấu hình LoRA LLM (252 modules) của E1, ViT vẫn đóng băng, nhưng mở huấn luyện đầy đủ (**Full Training**) toàn bộ Projector (`visual.merger` và `visual.deepstack_merger_list`) ở kiểu dữ liệu `torch.float32`.
+- **E2 (+ projector):** Kế thừa cấu hình LoRA LLM (252 modules) của E1, ViT vẫn đóng băng, nhưng mở huấn luyện đầy đủ (**Full Training**) toàn bộ Projector (`visual.merger` và `visual.deepstack_merger_list`) ở kiểu dữ liệu `torch.float32`. Tổng số tham số huấn luyện là **142.135.296 tham số** (tăng thêm đúng 109.105.152 tham số của khối projector so với E1, chiếm ~3,20% toàn mô hình).
 - **E3 (+ LoRA ViT):** Kế thừa cấu hình E2 (LoRA LLM 252 modules + Full Projector float32), đồng thời bổ sung thêm LoRA ($r=16$, $\alpha=32$) trên cả 24 khối của ViT (các module attention `qkv`, `proj` và MLP `linear_fc1`, `linear_fc2` = 96 modules LoRA), nâng tổng số module LoRA lên 348 modules.
 
-**Kiểm chứng thực nghiệm E1:**
-Theo [`report/evidence/e1.json`](report/evidence/e1.json), việc chỉ finetune LoRA trên LLM đã giúp `parse_valid_rate` đạt **99,68%** (310/311 ảnh hợp lệ), khắc phục lỗi sinh chuỗi JSON hỏng của E0 (88,42%). F1 micro tăng vọt từ **0,08814** (E0) lên **0,29401** (tăng **+0,20587** F1, vượt xa yêu cầu chuyển pha tối thiểu $\ge 0,10$). Điểm F1 từng lớp: `pothole` 0,21101; `crack` 0,23138; `manhole` 0,52174. Huấn luyện 300 bước mất **40,88 phút**, VRAM đỉnh đạt **6,37 GB**.
+**Kiểm chứng thực nghiệm E1 và E2:**
+- E1: `parse_valid_rate` đạt **99,68%**, F1 micro đạt **0,29401** (tăng +0,20587 so với E0). Huấn luyện 300 bước mất **40,88 phút**, VRAM đỉnh **6,37 GB**.
+- E2: `parse_valid_rate` đạt **100,0%** (311/311 ảnh hợp lệ), F1 micro tăng lên **0,33097** (tăng **+0,03696** F1 so với E1). F1 lớp `manhole` tăng mạnh từ 0,52174 lên **0,62094**; `crack` tăng từ 0,23138 lên **0,25871**. VRAM đỉnh đạt **8,06 GB** (+1,69 GB do lưu trạng thái optimizer AdamW 32-bit cho 109M tham số projector), thời gian train đạt **41,41 phút** (chỉ tăng 32 giây so với E1).
 
 ### Câu 2 — E0: `parse_valid_rate` bằng bao nhiêu, và hai lỗi phổ biến nhất của model gốc là gì (kèm một ví dụ output thô)?
 Theo [`report/evidence/e0.json`](report/evidence/e0.json), E0 được chấm trên **311 ảnh test**, với `score_version = 1`, `coord = norm1000`, `dataset_version = d10-21e4070301` và `missing_predictions = 0`. File dự đoán có **311 dòng với 311 `image_id` khác nhau**. Phân tích lại bằng `scripts.score.parse_output` cho **275 output hợp lệ**, khớp evidence: `parse_valid_rate = 275/311 = 0,884244`, tương đương **88,42%**; **36 output (11,58%)** không được parser chấp nhận.
@@ -79,7 +80,21 @@ Có **93 output hợp lệ bọc trong Markdown code fence**; parser gốc vẫn
   2. **Mô hình bị thoái hoá và hallucination:** LLM không được thiết kế để tự hồi quy dự đoán các token biểu diễn ảnh. Việc ép mô hình tối ưu loss trên các token ảnh và prompt làm nhiễu loạn trọng số, khiến mô hình học vẹt câu prompt, dễ gặp hiện tượng lặp lại vô hạn câu hỏi hoặc sinh ra văn bản rác thay vì tập trung học chính xác cú pháp JSON và toạ độ số nguyên của các box `bbox_2d`.
 
 ### Câu 5 — Vì sao không thể huấn luyện đầy đủ projector nếu ViT bị lượng tử hoá 4-bit, và bạn đã xử lý thế nào? Vì sao projector phải ở float32?
-<điền>
+- **Vì sao không thể huấn luyện đầy đủ projector nếu ViT bị lượng tử hoá 4-bit:**
+  1. Khi nạp mô hình qua thư viện `bitsandbytes` ở chế độ 4-bit (NF4), các trọng số được nén thành dạng cấu trúc chuyên biệt `Params4bit`. Dạng tensor này chỉ hỗ trợ phép toán dequantize tức thời (on-the-fly) trong bước lan truyền tiến (forward) để thực hiện nhân ma trận, hoàn toàn không hỗ trợ cập nhật gradient đầy đủ (`requires_grad=True` trên tensor 4-bit sẽ gây lỗi trong PyTorch hoặc không thể trừ gradient vào trọng số nén một cách toán học chuẩn xác).
+  2. Trong cấu trúc mã nguồn của Qwen3-VL, toàn bộ khối projector (`visual.merger` và `visual.deepstack_merger_list`) nằm trực tiếp bên trong submodule `visual`. Nếu áp dụng lượng tử hoá 4-bit chung cho toàn bộ mô hình mà không có cơ chế loại trừ, cả ViT và Projector sẽ bị nén về dạng 4-bit cố định, khiến việc mở `requires_grad = True` cho projector ở E2/E3 là bất khả thi.
+- **Cách tôi đã xử lý:**
+  Khi thiết lập `BitsAndBytesConfig`, tôi đã chỉ định rõ tham số:
+  ```python
+  llm_int8_skip_modules = ["visual", "lm_head"]
+```
+  Tùy chọn này hướng dẫn `bitsandbytes` bỏ qua toàn bộ module `visual` (bao gồm cả ViT và projector) cùng tầng `lm_head`, giữ chúng ở định dạng nguyên bản (`float16`) trong bộ nhớ GPU thay vì nén về 4-bit. Sau đó, trong hàm `apply_setup` cho E2 và E3, ta có thể dễ dàng duyệt qua các named parameters của `visual.merger` và `visual.deepstack_merger_list`, đưa dữ liệu về `torch.float32` và bật `param.requires_grad = True` thành công.
+- **Vì sao projector phải ở float32:**
+  1. Kiến trúc **DeepStack Merger** của Qwen3-VL trích xuất và kết hợp vector đặc trưng đa tầng từ lớp 5, 11 và 17 của ViT cùng với lớp cuối cùng (tổng cộng 109M tham số). Dòng thông tin thị giác này được chiếu và ghép nối qua nhiều tầng ma trận tuyến tính trước khi đưa vào LLM.
+  2. Khi thực hiện lan truyền ngược (backpropagation), gradient tích luỹ qua nhiều nhánh DeepStack liên tiếp. Nếu giữ projector ở `fp16` (bán chính xác với số mũ chỉ 5-bit, dải giá trị rất hẹp: giá trị dương nhỏ nhất ≈ $6 \times 10^{-5}$, lớn nhất ≈ $65504$), việc nhân dồn gradient qua nhiều tầng ma trận sâu rất dễ gây ra hiện tượng **tràn số số học (numerical overflow/underflow)**. Hậu quả là `GradScaler` không thể điều chỉnh được tỉ lệ scale, dẫn đến **Loss = NaN** và phá hủy hoàn toàn quá trình huấn luyện.
+  3. Việc chuyển toàn bộ tham số projector sang `torch.float32` (đơn chính xác với 8-bit số mũ, dải biểu diễn tới $10^{\pm 38}$) giúp đảm bảo độ ổn định số học tối đa khi tích luỹ gradient qua các nhánh merger phức tạp.
+- **Cạm bẫy lưu trữ Projector:**
+  Thư viện PEFT (`peft`) thông qua hàm `model.save_pretrained()` chỉ serialize các trọng số adapter LoRA. Khối Projector là các tham số gốc được mở `requires_grad=True`, hoàn toàn không phải module LoRA nên **không được lưu vào adapter**. Nếu quên điều này, khi suy luận nạp lại mô hình từ adapter, mô hình sẽ nạp lại projector gốc chưa huấn luyện, khiến điểm F1 của E2/E3 sụt giảm nghiêm trọng về bằng hệt E1. Tôi đã giải quyết bằng cách lưu riêng state_dict của projector ra file `work/E2_projector.pt` bằng `torch.save` và nạp đè lại khi suy luận.
 
 ### Câu 6 — Split theo phiên quay: vì sao chia ngẫu nhiên sẽ cho F1 cao giả? Số ảnh và số box từng lớp ở mỗi split là bao nhiêu?
 - **Vì sao chia ngẫu nhiên sẽ cho F1 cao giả (Session Leakage):**
