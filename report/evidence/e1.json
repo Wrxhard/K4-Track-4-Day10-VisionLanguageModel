@@ -1,0 +1,65 @@
+{
+  "n_images": 311,
+  "parse_valid_rate": 0.9967845659163987,
+  "missing_predictions": 0,
+  "micro": {
+    "precision": 0.31213872832369943,
+    "recall": 0.27787307032590053,
+    "f1": 0.294010889292196,
+    "tp": 162,
+    "fp": 357,
+    "fn": 421
+  },
+  "per_class": {
+    "pothole": {
+      "precision": 0.23711340206185566,
+      "recall": 0.19008264462809918,
+      "f1": 0.2110091743119266,
+      "tp": 23,
+      "fp": 74,
+      "fn": 98
+    },
+    "crack": {
+      "precision": 0.21987951807228914,
+      "recall": 0.24414715719063546,
+      "f1": 0.23137876386687795,
+      "tp": 73,
+      "fp": 259,
+      "fn": 226
+    },
+    "manhole": {
+      "precision": 0.7333333333333333,
+      "recall": 0.4049079754601227,
+      "f1": 0.5217391304347826,
+      "tp": 66,
+      "fp": 24,
+      "fn": 97
+    },
+    "other": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0
+    }
+  },
+  "mean_iou": 0.6771608539988163,
+  "fp_per_image": 1.1479099678456592,
+  "f1_ci95": [
+    0.25524156791248864,
+    0.3333333333333333
+  ],
+  "score_version": 1,
+  "name": "E1",
+  "dataset_version": "d10-21e4070301",
+  "split": "test",
+  "coord": "norm1000",
+  "meta": {
+    "trainable_params": 33030144,
+    "peak_vram_gb": 6.36718225479126,
+    "train_minutes": 40.88445497071667,
+    "checkpoint_id": "54809ebc6865488c8647f80885c5365e",
+    "run_signature": "{\"alpha\":32,\"batch_size\":2,\"dataset_version\":\"d10-21e4070301\",\"grad_accum\":4,\"lr\":0.0002,\"max_new_tokens\":256,\"max_steps\":300,\"model_id\":\"Qwen/Qwen3-VL-4B-Instruct\",\"n_train\":1422,\"prompt\":\"Detect road damage in this image. Locate all potholes, cracks, and manholes. Output a JSON list of detected objects, each with 'label' ('pothole', 'crack', or 'manhole') and 'bbox_2d' as [x1, y1, x2, y2] normalized on a 0-1000 integer coordinate scale. Return ONLY the JSON list.\",\"rank\":16,\"revision\":\"day10-fix-v1\",\"seed\":42,\"setup\":\"E1\",\"train_fraction\":1.0,\"train_ids_sha256\":\"495e2b1566c0358a9a884e822d2f6333477c9e450d7740244d761cd68b08bcfe\"}"
+  }
+}

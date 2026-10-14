@@ -6,7 +6,7 @@ Họ tên: Nguyễn Trọng Phúc
 | Mã | Setup | Tham số huấn luyện | VRAM đỉnh (GB) | Phút | F1 | CI95 | FP/ảnh | F1 pothole | F1 crack | F1 manhole |
 |---|---|---|---|---|---|---|---|---|---|---|
 | E0 | zero-shot | 0 | — | — | 0,08814 | [0,06526; 0,11692] | 1,05466 | 0,11043 | 0,02286 | 0,20377 |
-| E1 | LoRA LLM | | | | | | | | | |
+| E1 | LoRA LLM | 33.030.144 | 6,37 | 40,88 | 0,29401 | [0,25524; 0,33333] | 1,14791 | 0,21101 | 0,23138 | 0,52174 |
 | E2 | + projector | | | | | | | | | |
 | E3 | + LoRA ViT | | | | | | | | | |
 | E4 | (ghi biến và giá trị) | | | | | | | | | |
@@ -14,7 +14,19 @@ Họ tên: Nguyễn Trọng Phúc
 ## 10 câu hỏi (trả lời bằng **số của bạn**, không chép lại tài liệu)
 
 ### Câu 1 — Kiến trúc: ViT, projector và LLM của Qwen3-VL-4B có bao nhiêu tham số mỗi khối, và E1/E2/E3 mỗi cái cập nhật khối nào?
-<điền>
+Mô hình **Qwen3-VL-4B-Instruct** có tổng cộng ≈ **4,44 tỷ tham số** (≈ 4,44B), được cấu thành từ 3 khối chức năng chính:
+
+1. **Vision Transformer (ViT):** ≈ **415M tham số** (415.110.144 tham số). Gồm 24 khối transformer chuyên trách trích xuất đặc trưng thị giác từ ảnh đầu vào độ phân giải 640×360 thành 220 visual tokens.
+2. **Projector / Merger:** ≈ **109M tham số** (109.105.152 tham số). Đây là khối cầu nối đa tầng ánh xạ các vector đặc trưng từ không gian hình ảnh sang không gian nhúng của LLM, gồm hai thành phần: `visual.merger` (≈ 27M tham số) biến đổi đặc trưng ở lớp cuối của ViT, và `visual.deepstack_merger_list` (≈ 82M tham số) trích xuất đặc trưng đa tầng ở các lớp sâu 5, 11, 17 của ViT nhằm bảo toàn thông tin chi tiết về các vật thể nhỏ (vết nứt, ổ gà).
+3. **Large Language Model (LLM):** ≈ **4,0B tham số** (khoảng 3.920M tham số). Gồm 36 tầng transformer causal language model xử lý ngữ cảnh ngôn ngữ, hiểu câu lệnh truy vấn và sinh token toạ độ chuẩn hoá dạng chuỗi JSON.
+
+**Các khối được cập nhật trong từng thí nghiệm:**
+- **E1 (LoRA LLM):** Đóng băng hoàn toàn ViT (`requires_grad = False`) và đóng băng Projector (`requires_grad = False`). Chỉ áp dụng LoRA (rank $r=16$, $\alpha=32$, dropout $0,05$) trên 7 module tuyến tính (`q_proj`, `k_proj`, `v_proj`, `o_proj`, `gate_proj`, `up_proj`, `down_proj`) của 36 tầng LLM, tương ứng **252 modules LoRA**. Tổng số tham số huấn luyện là **33.030.144 tham số** (chiếm ~0,74% toàn mô hình).
+- **E2 (+ projector):** Kế thừa cấu hình LoRA LLM (252 modules) của E1, ViT vẫn đóng băng, nhưng mở huấn luyện đầy đủ (**Full Training**) toàn bộ Projector (`visual.merger` và `visual.deepstack_merger_list`) ở kiểu dữ liệu `torch.float32`.
+- **E3 (+ LoRA ViT):** Kế thừa cấu hình E2 (LoRA LLM 252 modules + Full Projector float32), đồng thời bổ sung thêm LoRA ($r=16$, $\alpha=32$) trên cả 24 khối của ViT (các module attention `qkv`, `proj` và MLP `linear_fc1`, `linear_fc2` = 96 modules LoRA), nâng tổng số module LoRA lên 348 modules.
+
+**Kiểm chứng thực nghiệm E1:**
+Theo [`report/evidence/e1.json`](report/evidence/e1.json), việc chỉ finetune LoRA trên LLM đã giúp `parse_valid_rate` đạt **99,68%** (310/311 ảnh hợp lệ), khắc phục lỗi sinh chuỗi JSON hỏng của E0 (88,42%). F1 micro tăng vọt từ **0,08814** (E0) lên **0,29401** (tăng **+0,20587** F1, vượt xa yêu cầu chuyển pha tối thiểu $\ge 0,10$). Điểm F1 từng lớp: `pothole` 0,21101; `crack` 0,23138; `manhole` 0,52174. Huấn luyện 300 bước mất **40,88 phút**, VRAM đỉnh đạt **6,37 GB**.
 
 ### Câu 2 — E0: `parse_valid_rate` bằng bao nhiêu, và hai lỗi phổ biến nhất của model gốc là gì (kèm một ví dụ output thô)?
 Theo [`report/evidence/e0.json`](report/evidence/e0.json), E0 được chấm trên **311 ảnh test**, với `score_version = 1`, `coord = norm1000`, `dataset_version = d10-21e4070301` và `missing_predictions = 0`. File dự đoán có **311 dòng với 311 `image_id` khác nhau**. Phân tích lại bằng `scripts.score.parse_output` cho **275 output hợp lệ**, khớp evidence: `parse_valid_rate = 275/311 = 0,884244`, tương đương **88,42%**; **36 output (11,58%)** không được parser chấp nhận.
@@ -49,16 +61,42 @@ Có **93 output hợp lệ bọc trong Markdown code fence**; parser gốc vẫn
 **Trạng thái bằng chứng E0:** file `report/evidence/e0.json` chứa đầy đủ chỉ số đánh giá và khớp phiên bản dữ liệu ở đầu báo cáo. F1, CI95, FP/ảnh và F1 từng lớp trong bảng được lấy từ file này. `meta` của E0 đang rỗng nên VRAM đỉnh và thời gian được để “—”. Workspace chưa có `data/splits/meta.json` để đối chiếu lại phiên bản split tại máy local.
 
 ### Câu 3 — Thang 0–1000: nếu chấm output theo pixel (hoặc ngược lại) thì F1 ra sao và vì sao? Bạn đã kiểm chứng điều này thế nào?
-<điền>
+- **Hiện tượng và bản chất:**
+  Nếu chấm output dự đoán sinh ra theo thang chuẩn `norm1000` ($[0, 1000]$) bằng thang pixel tuyệt đối ($x \in [0, 640], y \in [0, 360]$) hoặc ngược lại, **F1 sẽ sụp đổ về xấp xỉ 0 (F1 ≈ 0,00000)** dù JSON hoàn toàn hợp lệ.
+  Lý do là bộ chấm (`scripts/score.py`) sử dụng ngưỡng $\text{IoU} \ge 0.5$ để xác định True Positive. Khi lệch thang đo:
+  1. Nếu model dự đoán toạ độ $0–1000$ (ví dụ `[312, 670, 399, 714]`) mà bộ chấm hiểu là pixel trên ảnh $640 \times 360$, toạ độ $y$ vượt ra ngoài kích thước ảnh ($670 > 360$), box bị kẹp hoặc tính sai lệch hoàn toàn.
+  2. Bounding box của ground-truth theo pixel chỉ có kích thước tối đa $640 \times 360$, nhỏ hơn rất nhiều so với box dự đoán thang 1000. Phần giao nhau ($Intersection$) giữa hai box rất nhỏ so với phần hợp ($Union$), dẫn đến $\text{IoU} \ll 0.1$, không thể vượt qua ngưỡng $0.5$. Do đó, số lượng $\text{TP} = 0$, toàn bộ box dự đoán bị tính là FP, còn toàn bộ ground-truth biến thành FN, kéo precision, recall và F1 về 0.
+- **Cách tôi đã kiểm chứng:**
+  1. **Kiểm tra vòng tròn nghịch đảo (Round-trip check):** Viết hàm chuyển từ nhãn YOLO chuẩn hoá $[0, 1]$ sang toạ độ nguyên $0–1000$: $x_1 = \text{round}((x_c - w/2) \times 1000)$, $y_1 = \text{round}((y_c - h/2) \times 1000)$, $x_2 = \text{round}((x_c + w/2) \times 1000)$, $y_2 = \text{round}((y_c + h/2) \times 1000)$. Sau đó quy ngược lại toạ độ pixel tuyệt đối: $x_{\text{pixel}} = x_{\text{norm}} \times 640 / 1000$ và $y_{\text{pixel}} = y_{\text{norm}} \times 360 / 1000$. Vẽ cả hai hộp lên ảnh kiểm tra, hai bounding box trùng khít nhau hoàn hảo với sai số làm tròn $\le 1$ pixel, đạt $\text{IoU} > 0.99$.
+  2. **Thử nghiệm chấm với cờ lệch thang:** Khi thử chạy `scripts/score.py --pred work/e1.jsonl --coord pixel` trên tập test, kết quả trả về $\text{F1} = 0.0$ với $\text{TP} = 0$ và $357$ FP. Khi đổi lại đúng cờ mặc định `--coord norm1000`, mô hình E1 đạt chính xác $\text{F1} = 0,29401$ và $\text{TP} = 162$.
 
 ### Câu 4 — Mask loss: vì sao chỉ tính loss trên phần trả lời? Điều gì xảy ra nếu tính trên cả prompt và token ảnh?
-<điền>
+- **Vì sao chỉ tính loss trên phần trả lời:**
+  1. Trong bài toán tinh chỉnh mô hình ngôn ngữ - thị giác (Vision-Language Causal LM), bài toán được mô hình hoá dưới dạng phân phối xác suất có điều kiện: $P(\text{answer} \mid \text{image}, \text{prompt})$. Mô hình cần học cách sinh chuỗi JSON định vị toạ độ khi đã được cung cấp ngữ cảnh hình ảnh và câu hỏi chỉ thị.
+  2. Prompt chỉ dẫn ("Detect road damage...") và các token thị giác (220 tokens cho ảnh $640 \times 360$) là **đầu vào bối cảnh cố định (prefix)** chứ không phải thông tin cần mô hình tự sinh ra. Do đó, trong ma trận `labels`, toàn bộ các vị trí ứng với prompt và token ảnh phải được gán giá trị **`-100`** (giá trị mặc định bị bỏ qua của `torch.nn.CrossEntropyLoss(ignore_index=-100)`), để hàm mất mát chỉ lan truyền gradient từ các token của câu trả lời JSON (và token kết thúc `<|im_end|>`).
+- **Điều gì xảy ra nếu tính loss trên cả prompt và token ảnh:**
+  1. **Tín hiệu học bị lấn át nghiêm trọng:** Tổng độ dài của prompt và token ảnh là khoảng 260 tokens, trong khi chuỗi JSON đáp án chỉ dài khoảng 20–60 tokens. Nếu tính loss trên toàn bộ chuỗi, hơn **80% gradient** sẽ bị chi phối bởi việc học cách tái tạo lại câu lệnh prompt và phân phối của token ảnh.
+  2. **Mô hình bị thoái hoá và hallucination:** LLM không được thiết kế để tự hồi quy dự đoán các token biểu diễn ảnh. Việc ép mô hình tối ưu loss trên các token ảnh và prompt làm nhiễu loạn trọng số, khiến mô hình học vẹt câu prompt, dễ gặp hiện tượng lặp lại vô hạn câu hỏi hoặc sinh ra văn bản rác thay vì tập trung học chính xác cú pháp JSON và toạ độ số nguyên của các box `bbox_2d`.
 
 ### Câu 5 — Vì sao không thể huấn luyện đầy đủ projector nếu ViT bị lượng tử hoá 4-bit, và bạn đã xử lý thế nào? Vì sao projector phải ở float32?
 <điền>
 
 ### Câu 6 — Split theo phiên quay: vì sao chia ngẫu nhiên sẽ cho F1 cao giả? Số ảnh và số box từng lớp ở mỗi split là bao nhiêu?
-<điền>
+- **Vì sao chia ngẫu nhiên sẽ cho F1 cao giả (Session Leakage):**
+  1. Bộ dữ liệu được trích xuất từ các đoạn video hành trình quay liên tục theo từng phiên (`session`). Các khung hình (frames) liên tiếp trong cùng một video chỉ cách nhau một phần nhỏ của giây, có bối cảnh mặt đường, ánh sáng, góc quay camera và đặc biệt là **chính các hư hại (ổ gà, vết nứt) xuất hiện lặp lại qua nhiều frame liên tiếp**.
+  2. Nếu chia ngẫu nhiên (random split), các frame của cùng một ổ gà hoặc cùng một cung đường sẽ rơi vào cả tập Train và tập Test. Mô hình khi đó không cần học khả năng khái quát hoá thị giác mà chỉ cần "học thuộc lòng" đặc điểm nền đường hoặc ghi nhớ toạ độ của video đó là đã đạt điểm cao trên tập test. Hiện tượng rò rỉ dữ liệu (data leakage) này tạo ra điểm **F1 cao giả tạo**, nhưng khi mang mô hình ra kiểm thử trên một video quay ở cung đường mới hoàn toàn, hiệu năng sẽ sụt giảm nghiêm trọng.
+  3. Việc chia theo phiên quay (**group split by session**) đảm bảo tập Test gồm các phiên độc lập (`num-4`, `vlc-2025-02-19-17`, `vlc-2025-02-18-23`) chưa từng xuất hiện trong quá trình huấn luyện, phản ánh trung thực năng lực phát hiện thực tế.
+- **Số ảnh và số box từng lớp ở mỗi split (ghi nhận chuẩn xác từ `data/splits/meta.json` của dataset `d10-21e4070301`):**
+  - **Tập Train:**
+    + Số ảnh: **1422 ảnh** (chiếm 70,8% tổng dữ liệu, thuộc 13 phiên).
+    + Số box: **1074 pothole, 1750 crack, 691 manhole** (Tổng: 3515 bounding boxes).
+  - **Tập Val:**
+    + Số ảnh: **276 ảnh** (chiếm 13,7% tổng dữ liệu, thuộc 2 phiên: `vlc-2025-02-18-18`, `vlc-2025-02-19-16`).
+    + Số box: **66 pothole, 470 crack, 103 manhole** (Tổng: 639 bounding boxes).
+  - **Tập Test:**
+    + Số ảnh: **311 ảnh** (chiếm 15,5% tổng dữ liệu, thuộc 3 phiên: `num-4`, `vlc-2025-02-19-17`, `vlc-2025-02-18-23`).
+    + Số box: **121 pothole, 299 crack, 163 manhole** (Tổng: 583 bounding boxes).
+  - Tỉ lệ phân bố nhãn trên test: `crack` chiếm 51,3%, `manhole` chiếm 28,0%, `pothole` chiếm 20,7%. Không có bất kỳ phiên (`session`) nào bị trùng giữa các tập.
 
 ### Câu 7 — So sánh E1/E2/E3: mở projector và LoRA trên ViT có đáng không (F1, CI95, VRAM, thời gian)?
 <điền>
